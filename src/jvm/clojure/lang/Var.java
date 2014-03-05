@@ -155,17 +155,19 @@ public static Var internPrivate(String nsName, String sym){
 }
 
 public static Var intern(Namespace ns, Symbol sym){
-	return ns.intern(sym);
+  Var v = ns.intern(sym);
+  if (!v.isBound()) {
+    maybeLoadFromClass(ns + "/" + sym);
+  }
+	return v;
 }
 
-public static Var maybeLoadFromClass(String ns_sym){
+public static void maybeLoadFromClass(String ns_sym){
   try {
     Class c = Class.forName(clojure.lang.Compiler.munge(ns_sym.replaceAll("/",
-        "_")));
-    return (Var) c.getDeclaredField("VAR").get(null);      
+        "\\$")));
+    c.getDeclaredField("VAR").get(null);      
   } catch (Exception e) {
-    int i = ns_sym.indexOf("/");
-    return RT.var(ns_sym.substring(0, i), ns_sym.substring(i + 1));
   }
 }
 

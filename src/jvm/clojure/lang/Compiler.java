@@ -248,8 +248,6 @@ static final public Keyword elideMetaKey = Keyword.intern("elide-meta");
 static final public Var COMPILER_OPTIONS = Var.intern(Namespace.findOrCreate(Symbol.intern("clojure.core")),
                                                       Symbol.intern("*compiler-options*"), null).setDynamic();
 
-static public IPersistentMap fnVarMap = RT.map();
-
 static public Object getCompilerOption(Keyword k){
 	return RT.get(COMPILER_OPTIONS.deref(),k);
 }
@@ -4246,10 +4244,6 @@ static public class ObjExpr implements Expr{
       } else
         emit(C.EXPRESSION, this, clinitgen);
       clinitgen.invokeVirtual(VAR_TYPE, Method.getMethod("void bindRoot(Object)"));
-
-      if (COMPILE_PATH.deref() != null) {// || (Boolean)FORCE_LOAD.deref()) {
-        fnVarMap = fnVarMap.assoc(var, internalName);
-      }
     }
 		
 		clinitgen.returnValue();
@@ -4626,13 +4620,13 @@ static public class ObjExpr implements Expr{
 		else if(value instanceof Var)
 			{
 			Var var = (Var) value;
-			String className = (String) fnVarMap.valAt(value);
-       if (className == null || COMPILE_PATH.deref() == null) {
+			String className = maybeClassWithVAR(var);
+       if (className != null) {
+         gen.getStatic(Type.getType("L" + className.replaceAll("\\.", "/") + ";"), "VAR", VAR_TYPE);
+       } else {
          gen.push(var.ns.name.toString());
          gen.push(var.sym.toString());
-         gen.invokeStatic(RT_TYPE, Method.getMethod("clojure.lang.Var var(String,String)"));
-       } else {
-         gen.getStatic(Type.getType("L" + className + ";"), "VAR", VAR_TYPE);
+         gen.invokeStatic(RT_TYPE, Method.getMethod("clojure.lang.Var var(String,String)"));         
        }
 			}
 		else if(value instanceof IType)
@@ -4751,8 +4745,17 @@ static public class ObjExpr implements Expr{
 			}
 	}
 
+	private String maybeClassWithVAR(Var var) {
+    try {
+      Class c = Class.forName(var.ns.name.toString() + "$" + munge(var.sym.toString()), false, getClass().getClassLoader());
+      c.getDeclaredField("VAR");
+      return c.getCanonicalName();
+    } catch (Throwable e) {
+      return null;
+    }
+  }
 
-	void emitConstants(GeneratorAdapter clinitgen){
+  void emitConstants(GeneratorAdapter clinitgen){
 		try
 			{
 			Var.pushThreadBindings(RT.map(RT.PRINT_DUP, RT.T));
