@@ -273,7 +273,6 @@ synchronized public void bindRoot(Object root){
 	Object oldroot = this.root;
 	this.root = root;
 	++rev;
-        alterMeta(dissoc, RT.list(macroKey));
     notifyWatches(oldroot,this.root);
 }
 

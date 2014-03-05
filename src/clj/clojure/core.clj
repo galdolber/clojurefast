@@ -271,7 +271,8 @@
     :pre and :post that contain collections of pre or post conditions."
    :arglists '([name doc-string? attr-map? [params*] prepost-map? body]
                 [name doc-string? attr-map? ([params*] prepost-map? body)+ attr-map?])
-   :added "1.0"}
+   :added "1.0"
+   :macro true}
  defn (fn defn [&form &env name & fdecl]
         ;; Note: Cannot delegate this check to def because of the call to (with-meta name ..)
         (if (instance? clojure.lang.Symbol name)
@@ -314,8 +315,6 @@
                 ;;todo - restore propagation of fn name
                 ;;must figure out how to convey primitive hints to self calls first
                 (cons `fn fdecl) ))))
-
-(. (var defn) (setMacro))
 
 (defn cast
   "Throws a ClassCastException if x is not a c, else returns x."
@@ -426,7 +425,8 @@
   called."
    :arglists '([name doc-string? attr-map? [params*] body]
                  [name doc-string? attr-map? ([params*] body)+ attr-map?])
-   :added "1.0"}
+   :added "1.0"
+   :macro true}
  defmacro (fn [&form &env 
                 name & args]
              (let [prefix (loop [p (list name) args args]
@@ -459,14 +459,9 @@
                    decl (loop [p prefix d fdecl]
                           (if p
                             (recur (next p) (cons (first p) d))
-                            d))]
-               (list 'do
-                     (cons `defn decl)
-                     (list '. (list 'var name) '(setMacro))
-                     (list 'var name)))))
-
-
-(. (var defmacro) (setMacro))
+                            d))
+                   decl (cons (with-meta (first decl) {:macro true}) (next decl))]
+               (cons `defn decl))))
 
 (defmacro when
   "Evaluates test. If logical true, evaluates body in an implicit do."
