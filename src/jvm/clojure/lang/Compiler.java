@@ -372,6 +372,7 @@ static class DefExpr implements Expr{
 	public final Expr init;
 	public final Expr meta;
 	public final boolean initProvided;
+	public final boolean emitOnInit;
 	public final boolean isDynamic;
 	public final String source;
 	public final int line;
@@ -391,6 +392,7 @@ static class DefExpr implements Expr{
 		this.meta = meta;
 		this.isDynamic = isDynamic;
 		this.initProvided = initProvided;
+		this.emitOnInit = !(init instanceof FnExpr);
 	}
 
     private boolean includesExplicitMetadata(MapExpr expr) {
@@ -434,34 +436,38 @@ static class DefExpr implements Expr{
 	}
 
 	public void emit(C context, ObjExpr objx, GeneratorAdapter gen){
-		objx.emitVar(gen, var);
-		if(isDynamic)
-			{
-			gen.push(isDynamic);
-			gen.invokeVirtual(VAR_TYPE, setDynamicMethod);
-			}
-		if(meta != null)
-			{
-            if (initProvided || true)//includesExplicitMetadata((MapExpr) meta))
-                {
-                gen.dup();
-                meta.emit(C.EXPRESSION, objx, gen);
-                gen.checkCast(IPERSISTENTMAP_TYPE);
-                gen.invokeVirtual(VAR_TYPE, setMetaMethod);
-                }
-			}
-		if(initProvided)
-			{
-			gen.dup();
-			if(init instanceof FnExpr)
-				{
-				((FnExpr)init).emitForDefn(objx, gen);
-				}
-			else
-				init.emit(C.EXPRESSION, objx, gen);
-			gen.invokeVirtual(VAR_TYPE, bindRootMethod);
-			}
-
+	  if (emitOnInit) {
+  		objx.emitVar(gen, var);
+  		if(isDynamic)
+  			{
+  			gen.push(isDynamic);
+  			gen.invokeVirtual(VAR_TYPE, setDynamicMethod);
+  			}
+  		if(meta != null)
+  			{
+              if (initProvided || true)//includesExplicitMetadata((MapExpr) meta))
+                  {
+                  gen.dup();
+                  meta.emit(C.EXPRESSION, objx, gen);
+                  gen.checkCast(IPERSISTENTMAP_TYPE);
+                  gen.invokeVirtual(VAR_TYPE, setMetaMethod);
+                  }
+  			}
+  		if(initProvided)
+  			{
+  			gen.dup();
+  			if(init instanceof FnExpr)
+  				{
+  				((FnExpr)init).emitForDefn(objx, gen);
+  				}
+  			else
+  				init.emit(C.EXPRESSION, objx, gen);
+  			gen.invokeVirtual(VAR_TYPE, bindRootMethod);
+  			}
+	  } else {
+	    gen.push(""); // TODO push nil?
+	  }
+	  
 		if(context == C.STATEMENT)
 			gen.pop();
 	}
@@ -534,10 +540,13 @@ static class DefExpr implements Expr{
 //					.without(Keyword.intern(null, "added"))
 //					.without(Keyword.intern(null, "static"));
             mm = (IPersistentMap) elideMeta(mm);
-			Expr meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
+			Expr meta = null;
+			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name);
+			if (!(init instanceof FnExpr)) {
+			  meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
+			}
 			return new DefExpr((String) SOURCE.deref(), lineDeref(), columnDeref(),
-			                   v, analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name),
-			                   meta, RT.count(form) == 3, isDynamic);
+			                   v, init, meta, RT.count(form) == 3, isDynamic);
 		}
 	}
 }
