@@ -248,7 +248,7 @@ static final public Keyword elideMetaKey = Keyword.intern("elide-meta");
 static final public Var COMPILER_OPTIONS = Var.intern(Namespace.findOrCreate(Symbol.intern("clojure.core")),
                                                       Symbol.intern("*compiler-options*"), null).setDynamic();
 
-//static public IPersistentMap fnVarMap = RT.map();
+static public IPersistentMap fnVarMap = RT.map();
 
 static public Object getCompilerOption(Keyword k){
 	return RT.get(COMPILER_OPTIONS.deref(),k);
@@ -3996,6 +3996,7 @@ static public class ObjExpr implements Expr{
 	int line;
 	int column;
 	PersistentVector constants;
+	IPersistentSet usedConstants = PersistentTreeSet.EMPTY;
 	int constantsID;
 	int altCtorDrops = 0;
 
@@ -4246,9 +4247,9 @@ static public class ObjExpr implements Expr{
         emit(C.EXPRESSION, this, clinitgen);
       clinitgen.invokeVirtual(VAR_TYPE, Method.getMethod("void bindRoot(Object)"));
 
-//      if (COMPILE_PATH.deref() != null) {// || (Boolean)FORCE_LOAD.deref()) {
-//        fnVarMap = fnVarMap.assoc(var, internalName);
-//      }
+      if (COMPILE_PATH.deref() != null) {// || (Boolean)FORCE_LOAD.deref()) {
+        fnVarMap = fnVarMap.assoc(var, internalName);
+      }
     }
 		
 		clinitgen.returnValue();
@@ -4625,16 +4626,14 @@ static public class ObjExpr implements Expr{
 		else if(value instanceof Var)
 			{
 			Var var = (Var) value;
-//			String className = (String) fnVarMap.valAt(value);
-//       if (className == null || COMPILE_PATH.deref() == null) {
+			String className = (String) fnVarMap.valAt(value);
+       if (className == null || COMPILE_PATH.deref() == null) {
          gen.push(var.ns.name.toString());
          gen.push(var.sym.toString());
          gen.invokeStatic(RT_TYPE, Method.getMethod("clojure.lang.Var var(String,String)"));
-//       } else {
-//         gen.getStatic(
-//             Type.getType("L" + className.replaceAll("\\.", "/") + ";"),
-//             "VAR", VAR_TYPE);
-//       }
+       } else {
+         gen.getStatic(Type.getType("L" + className + ";"), "VAR", VAR_TYPE);
+       }
 			}
 		else if(value instanceof IType)
 			{
@@ -5037,6 +5036,7 @@ static public class ObjExpr implements Expr{
 	}
 
 	public void emitConstant(GeneratorAdapter gen, int id){
+	  usedConstants = (IPersistentSet) usedConstants.cons(id);
 		gen.getStatic(objtype, constantName(id), constantType(id));
 	}
 
@@ -7370,15 +7370,17 @@ public static Object compile(Reader rdr, String sourcePath, String sourceName) t
 		gen.endMethod();
 
 		//static fields for constants
-		for(int i = 0; i < objx.constants.count(); i++)
+		PersistentVector constants = PersistentVector.create(objx.usedConstants.seq());
+		for(int j = 0; j < constants.count(); j++)
 			{
+		  int i = (Integer)constants.nth(j);
 			cv.visitField(ACC_PUBLIC + ACC_FINAL + ACC_STATIC, objx.constantName(i), objx.constantType(i).getDescriptor(),
 			              null, null);
 			}
 
 		final int INITS_PER = 100;
-		int numInits =  objx.constants.count() / INITS_PER;
-		if(objx.constants.count() % INITS_PER != 0)
+		int numInits =  constants.count() / INITS_PER;
+		if(constants.count() % INITS_PER != 0)
 			++numInits;
 
 		for(int n = 0;n<numInits;n++)
@@ -7393,8 +7395,9 @@ public static Object compile(Reader rdr, String sourcePath, String sourceName) t
 				{
 				Var.pushThreadBindings(RT.map(RT.PRINT_DUP, RT.T));
 
-				for(int i = n*INITS_PER; i < objx.constants.count() && i < (n+1)*INITS_PER; i++)
+				for(int j = n*INITS_PER; j < constants.count() && j < (n+1)*INITS_PER; j++)
 					{
+				  int i = (Integer)constants.nth(j);
 					objx.emitValue(objx.constants.nth(i), clinitgen);
 					clinitgen.checkCast(objx.constantType(i));
 					clinitgen.putStatic(objx.objtype, objx.constantName(i), objx.constantType(i));
