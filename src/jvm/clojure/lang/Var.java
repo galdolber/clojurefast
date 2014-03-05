@@ -158,6 +158,16 @@ public static Var intern(Namespace ns, Symbol sym){
 	return ns.intern(sym);
 }
 
+public static Var maybeLoadFromClass(String ns_sym){
+  try {
+    Class c = Class.forName(clojure.lang.Compiler.munge(ns_sym.replaceAll("/",
+        "_")));
+    return (Var) c.getDeclaredField("VAR").get(null);      
+  } catch (Exception e) {
+    int i = ns_sym.indexOf("/");
+    return RT.var(ns_sym.substring(0, i), ns_sym.substring(i + 1));
+  }
+}
 
 public static Var create(){
 	return new Var(null, null);
