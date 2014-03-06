@@ -1,3 +1,24 @@
+# Modified clojure compiler for faster startup (WIP)
+From: galdolber.tumblr.com/post/78110050703/reduce-startup
+
+Implementation details:
+ * Replace setMacro with {:macro true} to allow macros to be self contained
+ * Move functions VAR intialization from the namespace to the generated function class
+ * Only emit used constants on ObjExprs
+ * Do not emit (def .. (fn ..))
+ * Emit Vars as static fields on the function class when the class exists
+      Before: Var const1 = RT.var("clojure.core", "map");
+      Now: Var const1 = clojure.core$map.VAR; // the first time the VAR initialization is triggered in a static block
+
+Open questions:
+ * (let [a 1] (defn ...)) ; this currently breaks
+ * How to achive dynamic var lookup? Here's one attempt: https://github.com/galdolber/clojurefast/tree/dynamic-var-lookup
+
+Current state:
+ * Most things work well when you compile a whole project alltogether with this(including clojure.core)
+ * When mixing AOT with clj files things break(dynamic var lookup is not working yet)
+
+----------------------------
  *   Clojure
  *   Copyright (c) Rich Hickey. All rights reserved.
  *   The use and distribution terms for this software are covered by the
