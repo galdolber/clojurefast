@@ -196,7 +196,7 @@ public Var findInternedVar(Symbol symbol){
 	Object o = mappings.get().valAt(symbol);
 	if(o != null && o instanceof Var && ((Var) o).ns == this)
 		return (Var) o;
-	return null;
+	return Var.maybeLoadFromClass(name + "/" + symbol);
 }
 
 

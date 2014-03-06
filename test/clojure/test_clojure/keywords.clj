@@ -9,17 +9,18 @@
 (ns clojure.test-clojure.keywords
   (:use clojure.test))
 
-(let [this-ns (str (.name *ns*))]
-  (deftest test-find-keyword
-    :foo
-    ::foo
-    (let [absent-keyword-sym (gensym "absent-keyword-sym")]
-      (are [result lookup] (= result (find-keyword lookup))
-           :foo :foo
-           :foo 'foo
-           :foo "foo"
-           nil absent-keyword-sym
-           nil (str absent-keyword-sym))
-      (are [result lookup] (= result (find-keyword this-ns lookup))
-           ::foo "foo"
-           nil (str absent-keyword-sym)))))
+(def this-ns (str (.name *ns*)))
+
+(deftest test-find-keyword
+  :foo
+  ::foo
+  (let [absent-keyword-sym (gensym "absent-keyword-sym")]
+    (are [result lookup] (= result (find-keyword lookup))
+         :foo :foo
+         :foo 'foo
+         :foo "foo"
+         nil absent-keyword-sym
+         nil (str absent-keyword-sym))
+    (are [result lookup] (= result (find-keyword this-ns lookup))
+         ::foo "foo"
+         nil (str absent-keyword-sym))))

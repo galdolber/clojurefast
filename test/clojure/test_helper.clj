@@ -18,8 +18,7 @@
 (ns clojure.test-helper
   (:use clojure.test))
 
-(let [nl (System/getProperty "line.separator")] 
-  (defn platform-newlines [s] (.replace s "\n" nl)))
+(defn platform-newlines [s] (.replace s "\n" (System/getProperty "line.separator")))
 
 (defn temp-ns
   "Create and return a temporary ns, using clojure.core + uses"

@@ -162,12 +162,13 @@ public static Var intern(Namespace ns, Symbol sym){
 	return v;
 }
 
-public static void maybeLoadFromClass(String ns_sym){
+public static Var maybeLoadFromClass(String ns_sym){
   try {
     Class c = Class.forName(clojure.lang.Compiler.munge(ns_sym.replaceAll("/",
         "\\$")));
-    c.getDeclaredField("VAR").get(null);      
-  } catch (Exception e) {
+    return (Var) c.getDeclaredField("VAR").get(null);      
+  } catch (Throwable e) {
+    return null;
   }
 }
 
