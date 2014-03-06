@@ -20,6 +20,7 @@ import clojure.asm.commons.Method;
 
 import java.io.*;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -372,6 +373,7 @@ static class DefExpr implements Expr{
 	public final Expr init;
 	public final Expr meta;
 	public final boolean initProvided;
+	public final boolean emitOnInit;
 	public final boolean isDynamic;
 	public final String source;
 	public final int line;
@@ -391,6 +393,7 @@ static class DefExpr implements Expr{
 		this.meta = meta;
 		this.isDynamic = isDynamic;
 		this.initProvided = initProvided;
+		this.emitOnInit = !(init instanceof FnExpr);
 	}
 
     private boolean includesExplicitMetadata(MapExpr expr) {
@@ -418,9 +421,7 @@ static class DefExpr implements Expr{
 				}
 			if(meta != null)
 				{
-                IPersistentMap metaMap = (IPersistentMap) meta.eval();
-                if (initProvided || true)//includesExplicitMetadata((MapExpr) meta))
-				    var.setMeta((IPersistentMap) meta.eval());
+				var.setMeta((IPersistentMap) meta.eval());
 				}
 			return var.setDynamic(isDynamic);
 			}
@@ -434,34 +435,38 @@ static class DefExpr implements Expr{
 	}
 
 	public void emit(C context, ObjExpr objx, GeneratorAdapter gen){
-		objx.emitVar(gen, var);
-		if(isDynamic)
-			{
-			gen.push(isDynamic);
-			gen.invokeVirtual(VAR_TYPE, setDynamicMethod);
-			}
-		if(meta != null)
-			{
-            if (initProvided || true)//includesExplicitMetadata((MapExpr) meta))
-                {
-                gen.dup();
-                meta.emit(C.EXPRESSION, objx, gen);
-                gen.checkCast(IPERSISTENTMAP_TYPE);
-                gen.invokeVirtual(VAR_TYPE, setMetaMethod);
-                }
-			}
-		if(initProvided)
-			{
-			gen.dup();
-			if(init instanceof FnExpr)
-				{
-				((FnExpr)init).emitForDefn(objx, gen);
-				}
-			else
-				init.emit(C.EXPRESSION, objx, gen);
-			gen.invokeVirtual(VAR_TYPE, bindRootMethod);
-			}
-
+	  if (emitOnInit) {
+  		objx.emitVar(gen, var);
+  		if(isDynamic)
+  			{
+  			gen.push(isDynamic);
+  			gen.invokeVirtual(VAR_TYPE, setDynamicMethod);
+  			}
+  		if(meta != null)
+  			{
+              if (initProvided || true)//includesExplicitMetadata((MapExpr) meta))
+                  {
+                  gen.dup();
+                  meta.emit(C.EXPRESSION, objx, gen);
+                  gen.checkCast(IPERSISTENTMAP_TYPE);
+                  gen.invokeVirtual(VAR_TYPE, setMetaMethod);
+                  }
+  			}
+  		if(initProvided)
+  			{
+  			gen.dup();
+  			if(init instanceof FnExpr)
+  				{
+  				((FnExpr)init).emitForDefn(objx, gen);
+  				}
+  			else
+  				init.emit(C.EXPRESSION, objx, gen);
+  			gen.invokeVirtual(VAR_TYPE, bindRootMethod);
+  			}
+	  } else {
+	    gen.push(""); // TODO push nil?
+	  }
+	  
 		if(context == C.STATEMENT)
 			gen.pop();
 	}
@@ -534,10 +539,13 @@ static class DefExpr implements Expr{
 //					.without(Keyword.intern(null, "added"))
 //					.without(Keyword.intern(null, "static"));
             mm = (IPersistentMap) elideMeta(mm);
-			Expr meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
+			Expr meta = null;
+			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name, RT.vector(v, mm, isDynamic));
+			if (!(init instanceof FnExpr)) {
+			  meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
+			}
 			return new DefExpr((String) SOURCE.deref(), lineDeref(), columnDeref(),
-			                   v, analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name),
-			                   meta, RT.count(form) == 3, isDynamic);
+			                   v, init, meta, RT.count(form) == 3, isDynamic);
 		}
 	}
 }
@@ -3778,7 +3786,7 @@ static public class FnExpr extends ObjExpr{
 			}
 	}
 
-	static Expr parse(C context, ISeq form, String name) {
+	static Expr parse(C context, ISeq form, String name, Object defContext) {
 		ISeq origForm = form;
 		FnExpr fn = new FnExpr(tagOf(form));
 		fn.src = form;
@@ -3868,6 +3876,8 @@ static public class FnExpr extends ObjExpr{
 			if(variadicMethod != null)
 				methods = RT.conj(methods, variadicMethod);
 
+			maybeSelfContain(context, fn, defContext);
+			
 			fn.methods = methods;
 			fn.variadicMethod = variadicMethod;
 			fn.keywords = (IPersistentMap) KEYWORDS.deref();
@@ -3915,6 +3925,17 @@ static public class FnExpr extends ObjExpr{
 		else
 			return fn;
 	}
+	
+	private static void maybeSelfContain(C context, ObjExpr fn, Object defContext) {
+    if (defContext != null) {
+      PersistentVector v = (PersistentVector) defContext;
+      fn.var = (Var) v.get(0);
+      IPersistentMap mm = (IPersistentMap) v.get(1);
+      fn.meta = mm.count() == 0 ? null : analyze(context == C.EVAL ? context
+          : C.EXPRESSION, mm);
+      fn.isDynamic = (Boolean) v.get(2);
+    }
+  }
 
 	public final ObjMethod variadicMethod(){
 		return variadicMethod;
@@ -3973,6 +3994,7 @@ static public class ObjExpr implements Expr{
 	int line;
 	int column;
 	PersistentVector constants;
+	IPersistentSet usedConstants = PersistentTreeSet.EMPTY;
 	int constantsID;
 	int altCtorDrops = 0;
 
@@ -3986,6 +4008,9 @@ static public class ObjExpr implements Expr{
 	final static Method voidctor = Method.getMethod("void <init>()");
 	protected IPersistentMap classMeta;
 	protected boolean isStatic;
+	protected boolean isDynamic;
+	protected Var var;
+	protected Expr meta;
 
 	public final String name(){
 		return name;
@@ -4147,6 +4172,10 @@ static public class ObjExpr implements Expr{
 //					, varCallsiteName(i), IFN_TYPE.getDescriptor(), null, null);
 //			}
 
+		if (var != null) {
+      cv.visitField(ACC_PUBLIC + ACC_FINAL + ACC_STATIC, "VAR", VAR_TYPE.getDescriptor(), null, null);
+    }
+		
 		//static init for constants, keywords and vars
 		GeneratorAdapter clinitgen = new GeneratorAdapter(ACC_PUBLIC + ACC_STATIC,
 		                                                  Method.getMethod("void <clinit> ()"),
@@ -4155,7 +4184,13 @@ static public class ObjExpr implements Expr{
 		                                                  cv);
 		clinitgen.visitCode();
 		clinitgen.visitLineNumber(line, clinitgen.mark());
-
+		if (var != null) {
+      clinitgen.push(var.ns.name.name);
+      clinitgen.push(var.sym.name);
+      clinitgen.invokeStatic(RT_TYPE, Method.getMethod("clojure.lang.Var var(String,String)"));
+      clinitgen.putStatic(objtype, "VAR", VAR_TYPE);
+    } 
+		
 		if(constants.count() > 0)
 			{
 			emitConstants(clinitgen);
@@ -4191,6 +4226,26 @@ static public class ObjExpr implements Expr{
 			clinitgen.mark(endLabel);
 			}
         */
+		
+		if (var != null) {
+      clinitgen.getStatic(objtype, "VAR", VAR_TYPE);
+      if (isDynamic) {
+        clinitgen.invokeVirtual(VAR_TYPE, Method.getMethod("clojure.lang.Var setDynamic()"));
+      }
+      if (meta != null) {
+        clinitgen.dup();
+        meta.emit(C.EXPRESSION, this, clinitgen);
+        clinitgen.checkCast(IPERSISTENTMAP_TYPE);
+        clinitgen.invokeVirtual(VAR_TYPE, Method.getMethod("void setMeta(clojure.lang.IPersistentMap)"));
+      }
+
+      if (this instanceof FnExpr) {
+        ((FnExpr) this).emitForDefn(this, clinitgen);
+      } else
+        emit(C.EXPRESSION, this, clinitgen);
+      clinitgen.invokeVirtual(VAR_TYPE, Method.getMethod("void bindRoot(Object)"));
+    }
+		
 		clinitgen.returnValue();
 
 		clinitgen.endMethod();
@@ -4565,9 +4620,14 @@ static public class ObjExpr implements Expr{
 		else if(value instanceof Var)
 			{
 			Var var = (Var) value;
-			gen.push(var.ns.name.toString());
-			gen.push(var.sym.toString());
-			gen.invokeStatic(RT_TYPE, Method.getMethod("clojure.lang.Var var(String,String)"));
+			String className = maybeClassWithVAR(var);
+       if (className != null) {
+         gen.getStatic(Type.getType("L" + className.replaceAll("\\.", "/") + ";"), "VAR", VAR_TYPE);
+       } else {
+         gen.push(var.ns.name.toString());
+         gen.push(var.sym.toString());
+         gen.invokeStatic(RT_TYPE, Method.getMethod("clojure.lang.Var var(String,String)"));         
+       }
 			}
 		else if(value instanceof IType)
 			{
@@ -4685,8 +4745,17 @@ static public class ObjExpr implements Expr{
 			}
 	}
 
+	private String maybeClassWithVAR(Var var) {
+    try {
+      Class c = Class.forName(var.ns.name.toString() + "$" + munge(var.sym.toString()), false, getClass().getClassLoader());
+      c.getDeclaredField("VAR");
+      return c.getCanonicalName();
+    } catch (Throwable e) {
+      return null;
+    }
+  }
 
-	void emitConstants(GeneratorAdapter clinitgen){
+  void emitConstants(GeneratorAdapter clinitgen){
 		try
 			{
 			Var.pushThreadBindings(RT.map(RT.PRINT_DUP, RT.T));
@@ -4745,6 +4814,14 @@ static public class ObjExpr implements Expr{
 				{
 				loader = (DynamicClassLoader) LOADER.deref();
 				compiledClass = loader.defineClass(name, bytecode, src);
+        // Force var init
+				try {
+            Field declaredField = compiledClass.getDeclaredField("VAR");
+            Var v = (Var) declaredField.get(null);
+          } catch (NoSuchFieldException e) {
+          } catch (Exception e) {
+            throw Util.sneakyThrow(e);
+          }
 				}
 		return compiledClass;
 	}
@@ -4962,6 +5039,7 @@ static public class ObjExpr implements Expr{
 	}
 
 	public void emitConstant(GeneratorAdapter gen, int id){
+	  usedConstants = (IPersistentSet) usedConstants.cons(id);
 		gen.getStatic(objtype, constantName(id), constantType(id));
 	}
 
@@ -6400,6 +6478,10 @@ public static Expr analyze(C context, Object form) {
 }
 
 private static Expr analyze(C context, Object form, String name) {
+  return analyze(context, form, name, null);
+}
+
+private static Expr analyze(C context, Object form, String name, Object defContext) {
 	//todo symbol macro expansion?
 	try
 		{
@@ -6435,7 +6517,7 @@ private static Expr analyze(C context, Object form, String name) {
 				return ret;
 				}
 		else if(form instanceof ISeq)
-				return analyzeSeq(context, (ISeq) form, name);
+				return analyzeSeq(context, (ISeq) form, name, defContext);
 		else if(form instanceof IPersistentVector)
 				return VectorExpr.parse(context, (IPersistentVector) form);
 		else if(form instanceof IRecord)
@@ -6609,7 +6691,7 @@ static Object macroexpand(Object form) {
 	return form;
 }
 
-private static Expr analyzeSeq(C context, ISeq form, String name) {
+private static Expr analyzeSeq(C context, ISeq form, String name, Object defContext) {
 	Object line = lineDeref();
 	Object column = columnDeref();
 	if(RT.meta(form) != null && RT.meta(form).containsKey(RT.LINE_KEY))
@@ -6622,7 +6704,7 @@ private static Expr analyzeSeq(C context, ISeq form, String name) {
 		{
 		Object me = macroexpand1(form);
 		if(me != form)
-			return analyze(context, me, name);
+			return analyze(context, me, name, defContext);
 
 		Object op = RT.first(form);
 		if(op == null)
@@ -6632,7 +6714,7 @@ private static Expr analyzeSeq(C context, ISeq form, String name) {
 			return analyze(context, preserveTag(form, inline.applyTo(RT.next(form))));
 		IParser p;
 		if(op.equals(FN))
-			return FnExpr.parse(context, form, name);
+			return FnExpr.parse(context, form, name, defContext);
 		else if((p = (IParser) specials.valAt(op)) != null)
 			return p.parse(context, form);
 		else
@@ -7291,15 +7373,17 @@ public static Object compile(Reader rdr, String sourcePath, String sourceName) t
 		gen.endMethod();
 
 		//static fields for constants
-		for(int i = 0; i < objx.constants.count(); i++)
+		PersistentVector constants = PersistentVector.create(objx.usedConstants.seq());
+		for(int j = 0; j < constants.count(); j++)
 			{
+		  int i = (Integer)constants.nth(j);
 			cv.visitField(ACC_PUBLIC + ACC_FINAL + ACC_STATIC, objx.constantName(i), objx.constantType(i).getDescriptor(),
 			              null, null);
 			}
 
 		final int INITS_PER = 100;
-		int numInits =  objx.constants.count() / INITS_PER;
-		if(objx.constants.count() % INITS_PER != 0)
+		int numInits =  constants.count() / INITS_PER;
+		if(constants.count() % INITS_PER != 0)
 			++numInits;
 
 		for(int n = 0;n<numInits;n++)
@@ -7314,8 +7398,9 @@ public static Object compile(Reader rdr, String sourcePath, String sourceName) t
 				{
 				Var.pushThreadBindings(RT.map(RT.PRINT_DUP, RT.T));
 
-				for(int i = n*INITS_PER; i < objx.constants.count() && i < (n+1)*INITS_PER; i++)
+				for(int j = n*INITS_PER; j < constants.count() && j < (n+1)*INITS_PER; j++)
 					{
+				  int i = (Integer)constants.nth(j);
 					objx.emitValue(objx.constants.nth(i), clinitgen);
 					clinitgen.checkCast(objx.constantType(i));
 					clinitgen.putStatic(objx.objtype, objx.constantName(i), objx.constantType(i));

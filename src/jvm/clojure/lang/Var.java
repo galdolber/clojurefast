@@ -155,9 +155,21 @@ public static Var internPrivate(String nsName, String sym){
 }
 
 public static Var intern(Namespace ns, Symbol sym){
-	return ns.intern(sym);
+  Var v = ns.intern(sym);
+  if (!v.isBound()) {
+    maybeLoadFromClass(ns + "/" + sym);
+  }
+	return v;
 }
 
+public static void maybeLoadFromClass(String ns_sym){
+  try {
+    Class c = Class.forName(clojure.lang.Compiler.munge(ns_sym.replaceAll("/",
+        "\\$")));
+    c.getDeclaredField("VAR").get(null);      
+  } catch (Exception e) {
+  }
+}
 
 public static Var create(){
 	return new Var(null, null);
@@ -273,7 +285,6 @@ synchronized public void bindRoot(Object root){
 	Object oldroot = this.root;
 	this.root = root;
 	++rev;
-        alterMeta(dissoc, RT.list(macroKey));
     notifyWatches(oldroot,this.root);
 }
 
