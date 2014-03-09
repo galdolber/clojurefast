@@ -76,6 +76,7 @@ static public volatile int rev = 0;
 static Keyword privateKey = Keyword.intern(null, "private");
 static IPersistentMap privateMeta = new PersistentArrayMap(new Object[]{privateKey, Boolean.TRUE});
 static Keyword macroKey = Keyword.intern(null, "macro");
+static Keyword forceKey = Keyword.intern(null, "force");
 static Keyword nameKey = Keyword.intern(null, "name");
 static Keyword nsKey = Keyword.intern(null, "ns");
 //static Keyword tagKey = Keyword.intern(null, "tag");

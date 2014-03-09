@@ -263,6 +263,7 @@
         docstring (str "Positional factory function for class " classname ".")]
     `(defn ~fn-name
        ~docstring
+       {:force true}
        [~@field-args ~@(if (seq over) '[& overage] [])]
        ~(if (seq over)
           `(if (= (count ~'overage) ~over-count)
@@ -366,6 +367,7 @@
        ~(build-positional-factory gname classname fields)
        (defn ~(symbol (str 'map-> gname))
          ~(str "Factory function for class " classname ", taking a map of keywords to field values.")
+         {:force true}
          ([m#] (~(symbol (str classname "/create")) m#)))
        ~classname)))
 

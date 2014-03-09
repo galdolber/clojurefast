@@ -384,7 +384,7 @@ static class DefExpr implements Expr{
 	final static Method setDynamicMethod = Method.getMethod("clojure.lang.Var setDynamic(boolean)");
 	final static Method symintern = Method.getMethod("clojure.lang.Symbol intern(String, String)");
 
-	public DefExpr(String source, int line, int column, Var var, Expr init, Expr meta, boolean initProvided, boolean isDynamic){
+	public DefExpr(String source, int line, int column, Var var, Expr init, Expr meta, boolean initProvided, boolean isDynamic, boolean isMacro){
 		this.source = source;
 		this.line = line;
 		this.column = column;
@@ -393,7 +393,7 @@ static class DefExpr implements Expr{
 		this.meta = meta;
 		this.isDynamic = isDynamic;
 		this.initProvided = initProvided;
-		this.emitOnInit = !(init instanceof FnExpr);
+		this.emitOnInit = isMacro || !(init instanceof FnExpr);
 	}
 
     private boolean includesExplicitMetadata(MapExpr expr) {
@@ -507,6 +507,7 @@ static class DefExpr implements Expr{
 					throw Util.runtimeException("Can't create defs outside of current ns");
 				}
 			IPersistentMap mm = sym.meta();
+			boolean isMacro = mm != null && (mm.containsKey(Var.macroKey) || mm.containsKey(Var.forceKey));
 			boolean isDynamic = RT.booleanCast(RT.get(mm,dynamicKey));
 			if(isDynamic)
 			   v.setDynamic();
@@ -540,12 +541,12 @@ static class DefExpr implements Expr{
 //					.without(Keyword.intern(null, "static"));
             mm = (IPersistentMap) elideMeta(mm);
 			Expr meta = null;
-			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name, RT.vector(v, mm, isDynamic));
-			if (!(init instanceof FnExpr)) {
+			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name, isMacro ? null : RT.vector(v, mm, isDynamic));
+			if (isMacro || !(init instanceof FnExpr)) {
 			  meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
 			}
-			return new DefExpr((String) SOURCE.deref(), lineDeref(), columnDeref(),
-			                   v, init, meta, RT.count(form) == 3, isDynamic);
+      return new DefExpr((String) SOURCE.deref(), lineDeref(), columnDeref(),
+			                   v, init, meta, RT.count(form) == 3, isDynamic, isMacro);
 		}
 	}
 }
@@ -4814,14 +4815,6 @@ static public class ObjExpr implements Expr{
 				{
 				loader = (DynamicClassLoader) LOADER.deref();
 				compiledClass = loader.defineClass(name, bytecode, src);
-        // Force var init
-				try {
-            Field declaredField = compiledClass.getDeclaredField("VAR");
-            Var v = (Var) declaredField.get(null);
-          } catch (NoSuchFieldException e) {
-          } catch (Exception e) {
-            throw Util.sneakyThrow(e);
-          }
 				}
 		return compiledClass;
 	}
@@ -6565,6 +6558,9 @@ static public Var isMacro(Object op) {
 	if(op instanceof Symbol || op instanceof Var)
 		{
                 Var v = (op instanceof Var) ? (Var) op : lookupVar((Symbol) op, false, false);
+//                if (v != null) {
+//                  System.out.println(op + " " + v.isMacro());
+//                }
 		if(v != null && v.isMacro())
 			{
 			if(v.ns != currentNS() && !v.isPublic())
