@@ -464,7 +464,7 @@ static class DefExpr implements Expr{
   			gen.invokeVirtual(VAR_TYPE, bindRootMethod);
   			}
 	  } else {
-	    objx.emitVar(gen, var);
+	    gen.push(""); // TODO
 	  }
 	  
 		if(context == C.STATEMENT)
@@ -7008,10 +7008,6 @@ static public Object resolveIn(Namespace n, Symbol sym, boolean allowPrivate) {
 				}
 			else
 				{
-			  Var v = Var.maybeLoadFromClass("clojure.core/" + sym);
-			  if (v != null) {
-			    return v;
-			  }
 				throw Util.runtimeException("Unable to resolve symbol: " + sym + " in this context");
 				}
 			}
@@ -7090,10 +7086,6 @@ static Var lookupVar(Symbol sym, boolean internNew, boolean registerMacro) {
 			}
 	if(var != null && (!var.isMacro() || registerMacro))
 		registerVar(var);
-	
-	if (var == null) {
-	  var = Var.maybeLoadFromClass("clojure.core/" + sym);
-	}
 	
 	return var;
 }
