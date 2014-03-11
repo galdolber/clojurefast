@@ -164,10 +164,11 @@ public static Var intern(Namespace ns, Symbol sym){
 }
 
 public static Var maybeLoadFromClass(String ns_sym){
+  ns_sym = clojure.lang.Compiler.munge(ns_sym.replaceAll("/", "\\$"));
   try {
-    Class c = Class.forName(clojure.lang.Compiler.munge(ns_sym.replaceAll("/",
-        "\\$")));
-    return (Var) c.getDeclaredField("VAR").get(null);      
+    Class c = Class.forName(ns_sym);
+    Var v = (Var) c.getDeclaredField("VAR").get(null);
+    return v;
   } catch (Throwable e) {
     return null;
   }

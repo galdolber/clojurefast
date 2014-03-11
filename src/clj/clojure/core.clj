@@ -460,7 +460,8 @@
                           (if p
                             (recur (next p) (cons (first p) d))
                             d))
-                   decl (cons (with-meta (first decl) {:macro true}) (next decl))]
+                   sym (with-meta (first decl) (assoc (meta (first decl)) :macro true))
+                   decl (cons sym (next decl))]
                (cons `defn decl))))
 
 (defmacro when

@@ -35,6 +35,9 @@ Namespace(Symbol name){
 	mappings.set(RT.DEFAULT_IMPORTS);
 	aliases.set(RT.map());
 	refers.set(RT.map());
+	if (!name.name.equals("clojure.core")) {
+	  referNs(RT.CLOJURE_NS, RT.map());
+	}
 }
 
 public static ISeq all(){
