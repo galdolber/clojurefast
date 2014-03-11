@@ -41,6 +41,11 @@ public MultiFn(String name, IFn dispatchFn, Object defaultDispatchVal, IRef hier
 	this.preferTable = PersistentHashMap.EMPTY;
     this.hierarchy = hierarchy;
 	cachedHierarchy = null;
+	
+	assoc.maybeLoad();
+	dissoc.maybeLoad();
+	isa.maybeLoad();
+	parents.maybeLoad();
 }
 
 public MultiFn reset(){

@@ -158,13 +158,13 @@ public static Var internPrivate(String nsName, String sym){
 public static Var intern(Namespace ns, Symbol sym){
   Var v = ns.intern(sym);
   if (!v.isBound()) {
-    maybeLoadFromClass(ns + "/" + sym);
+    maybeLoadFromClass(ns.toString(), sym.toString());
   }
 	return v;
 }
 
-public static Var maybeLoadFromClass(String ns_sym){
-  ns_sym = clojure.lang.Compiler.munge(ns_sym.replaceAll("/", "\\$"));
+public static Var maybeLoadFromClass(String ns, String sym){
+  String ns_sym = clojure.lang.Compiler.munge(ns + "$" + sym.replace(".", "_DOT_"));
   try {
     Class c = Class.forName(ns_sym);
     Var v = (Var) c.getDeclaredField("VAR").get(null);
@@ -726,4 +726,8 @@ static IFn dissoc = new AFn() {
             return RT.dissoc(c, k);
     }
 };
+
+public void maybeLoad() {
+  maybeLoadFromClass(ns.toString(), sym.toString());
+}
 }

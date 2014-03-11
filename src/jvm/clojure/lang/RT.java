@@ -327,8 +327,8 @@ static{
 	              arglistskw, list(vector(namesym))));
 	try {
 		doInit();
-		Var.maybeLoadFromClass("clojure.core/ns");
-		Var.maybeLoadFromClass("clojure.core/in-ns");
+		Var.maybeLoadFromClass("clojure.core", "ns");
+		Var.maybeLoadFromClass("clojure.core", "in-ns");
 	}
 	catch(Exception e) {
 		throw Util.sneakyThrow(e);
