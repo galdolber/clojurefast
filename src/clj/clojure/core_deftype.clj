@@ -31,7 +31,7 @@
         psig (fn [[name [& args]]]
                (vector name (vec (map tag args)) (tag name) (map meta args)))
         cname (with-meta (symbol (str (namespace-munge *ns*) "." name)) (meta name))]
-    `(let [] 
+    `(do
        (gen-interface :name ~cname :methods ~(vec (map psig sigs)))
        (import ~cname))))
 
@@ -263,7 +263,6 @@
         docstring (str "Positional factory function for class " classname ".")]
     `(defn ~fn-name
        ~docstring
-       {:force true}
        [~@field-args ~@(if (seq over) '[& overage] [])]
        ~(if (seq over)
           `(if (= (count ~'overage) ~over-count)
@@ -359,7 +358,7 @@
         classname (symbol (str ns-part "." gname))
         hinted-fields fields
         fields (vec (map #(with-meta % nil) fields))]
-    `(let []
+    `(do
        (declare ~(symbol (str  '-> gname)))
        (declare ~(symbol (str 'map-> gname)))
        ~(emit-defrecord name gname (vec hinted-fields) (vec interfaces) methods)
@@ -367,7 +366,6 @@
        ~(build-positional-factory gname classname fields)
        (defn ~(symbol (str 'map-> gname))
          ~(str "Factory function for class " classname ", taking a map of keywords to field values.")
-         {:force true}
          ([m#] (~(symbol (str classname "/create")) m#)))
        ~classname)))
 
@@ -460,7 +458,7 @@
         hinted-fields fields
         fields (vec (map #(with-meta % nil) fields))
         [field-args over] (split-at 20 fields)]
-    `(let []
+    `(do
        ~(emit-deftype* name gname (vec hinted-fields) (vec interfaces) methods)
        (import ~classname)
        ~(build-positional-factory gname classname fields)

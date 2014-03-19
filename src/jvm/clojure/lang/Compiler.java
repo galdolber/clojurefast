@@ -414,7 +414,7 @@ static class DefExpr implements Expr{
 	final static Method setDynamicMethod = Method.getMethod("clojure.lang.Var setDynamic(boolean)");
 	final static Method symintern = Method.getMethod("clojure.lang.Symbol intern(String, String)");
 
-	public DefExpr(String source, int line, int column, Var var, Expr init, Expr meta, boolean initProvided, boolean isDynamic, boolean isDeclared){
+	public DefExpr(C c, String source, int line, int column, Var var, Expr init, Expr meta, boolean initProvided, boolean isDynamic, boolean isDeclared){
 		this.source = source;
 		this.line = line;
 		this.column = column;
@@ -423,7 +423,7 @@ static class DefExpr implements Expr{
 		this.meta = meta;
 		this.isDynamic = isDynamic;
 		this.initProvided = initProvided;
-		this.emitOnInit = !isDeclared && !(init instanceof FnExpr);
+		this.emitOnInit = (C.RETURN == c || C.EXPRESSION == c) || (!isDeclared && !(init instanceof FnExpr));
 	}
 
     private boolean includesExplicitMetadata(MapExpr expr) {
@@ -493,12 +493,10 @@ static class DefExpr implements Expr{
   				init.emit(C.EXPRESSION, objx, gen);
   			gen.invokeVirtual(VAR_TYPE, bindRootMethod);
   			}
-	  } else {
-	    gen.push(""); // TODO
+  		
+  		if(context == C.STATEMENT)
+        gen.pop();
 	  }
-	  
-		if(context == C.STATEMENT)
-			gen.pop();
 	}
 
 	public boolean hasJavaClass(){
@@ -572,11 +570,11 @@ static class DefExpr implements Expr{
 //					.without(Keyword.intern(null, "static"));
             mm = (IPersistentMap) elideMeta(mm);
 			Expr meta = null;
-			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name, RT.vector(v, mm, isDynamic));
-			if (!isDeclared && !(init instanceof FnExpr)) {
+			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name, (C.RETURN == context || C.EXPRESSION == context) ? null : RT.vector(v, mm, isDynamic));
+			if ((C.RETURN == context || C.EXPRESSION == context) || (!isDeclared && !(init instanceof FnExpr))) {
 			  meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
 			}
-      return new DefExpr((String) SOURCE.deref(), lineDeref(), columnDeref(),
+      return new DefExpr(context, (String) SOURCE.deref(), lineDeref(), columnDeref(),
 			                   v, init, meta, RT.count(form) == 3, isDynamic, isDeclared);
 		}
 	}
@@ -3805,6 +3803,7 @@ static public class FnExpr extends ObjExpr{
 		                  (munge(currentNS().name.name) + "$");
 		if(RT.second(form) instanceof Symbol)
 			name = ((Symbol) RT.second(form)).name;
+		
 		String simpleName = name != null ?
 		                    (munge(name).replace(".", "_DOT_")
 		                    + (enclosingMethod != null ? "__" + RT.nextID() : ""))
