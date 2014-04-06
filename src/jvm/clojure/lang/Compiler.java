@@ -159,6 +159,36 @@ private static final Type[][] ARG_TYPES;
 //private static final Type[] EXCEPTION_TYPES = {Type.getType(Exception.class)};
 private static final Type[] EXCEPTION_TYPES = {};
 
+static final public IPersistentMap CHAR_MAP =
+PersistentHashMap.create('-', "_",
+//                         '.', "_DOT_",
+':', "_COLON_",
+'+', "_PLUS_",
+'>', "_GT_",
+'<', "_LT_",
+'=', "_EQ_",
+'~', "_TILDE_",
+'!', "_BANG_",
+'@', "_CIRCA_",
+'#', "_SHARP_",
+'\'', "_SINGLEQUOTE_",
+'"', "_DOUBLEQUOTE_",
+'%', "_PERCENT_",
+'^', "_CARET_",
+'&', "_AMPERSAND_",
+'*', "_STAR_",
+'|', "_BAR_",
+'{', "_LBRACE_",
+'}', "_RBRACE_",
+'[', "_LBRACK_",
+']', "_RBRACK_",
+'/', "_SLASH_",
+'\\', "_BSLASH_",
+'?', "_QMARK_");
+
+static final public IPersistentMap DEMUNGE_MAP;
+static final public Pattern DEMUNGE_PATTERN;
+
 static
 	{
 	OBJECT_TYPE = Type.getType(Object.class);
@@ -384,7 +414,7 @@ static class DefExpr implements Expr{
 	final static Method setDynamicMethod = Method.getMethod("clojure.lang.Var setDynamic(boolean)");
 	final static Method symintern = Method.getMethod("clojure.lang.Symbol intern(String, String)");
 
-	public DefExpr(String source, int line, int column, Var var, Expr init, Expr meta, boolean initProvided, boolean isDynamic){
+	public DefExpr(C c, String source, int line, int column, Var var, Expr init, Expr meta, boolean initProvided, boolean isDynamic, boolean isDeclared){
 		this.source = source;
 		this.line = line;
 		this.column = column;
@@ -393,7 +423,7 @@ static class DefExpr implements Expr{
 		this.meta = meta;
 		this.isDynamic = isDynamic;
 		this.initProvided = initProvided;
-		this.emitOnInit = !(init instanceof FnExpr);
+		this.emitOnInit = (C.RETURN == c || C.EXPRESSION == c) || (!isDeclared && !(init instanceof FnExpr));
 	}
 
     private boolean includesExplicitMetadata(MapExpr expr) {
@@ -463,12 +493,9 @@ static class DefExpr implements Expr{
   				init.emit(C.EXPRESSION, objx, gen);
   			gen.invokeVirtual(VAR_TYPE, bindRootMethod);
   			}
-	  } else {
-	    gen.push(""); // TODO push nil?
+  		if(context == C.STATEMENT)
+        gen.pop();
 	  }
-	  
-		if(context == C.STATEMENT)
-			gen.pop();
 	}
 
 	public boolean hasJavaClass(){
@@ -508,6 +535,7 @@ static class DefExpr implements Expr{
 				}
 			IPersistentMap mm = sym.meta();
 			boolean isDynamic = RT.booleanCast(RT.get(mm,dynamicKey));
+			boolean isDeclared = RT.booleanCast(RT.get(mm,Keyword.intern("declared")));
 			if(isDynamic)
 			   v.setDynamic();
             if(!isDynamic && sym.name.startsWith("*") && sym.name.endsWith("*") && sym.name.length() > 2)
@@ -520,6 +548,7 @@ static class DefExpr implements Expr{
 				{
 				IPersistentMap vm = v.meta();
 				//vm = (IPersistentMap) RT.assoc(vm,staticKey,RT.T);
+				vm = (IPersistentMap) RT.assoc(vm,Var.macroKey,mm.valAt(Var.macroKey));
 				//drop quote
 				vm = (IPersistentMap) RT.assoc(vm,arglistsKey,RT.second(mm.valAt(arglistsKey)));
 				v.setMeta(vm);
@@ -540,12 +569,12 @@ static class DefExpr implements Expr{
 //					.without(Keyword.intern(null, "static"));
             mm = (IPersistentMap) elideMeta(mm);
 			Expr meta = null;
-			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name, RT.vector(v, mm, isDynamic));
-			if (!(init instanceof FnExpr)) {
+			Expr init = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name, (C.RETURN == context || C.EXPRESSION == context) ? null : RT.vector(v, mm, isDynamic));
+			if ((C.RETURN == context || C.EXPRESSION == context) || (!isDeclared && !(init instanceof FnExpr))) {
 			  meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
 			}
-			return new DefExpr((String) SOURCE.deref(), lineDeref(), columnDeref(),
-			                   v, init, meta, RT.count(form) == 3, isDynamic);
+			return new DefExpr(context, (String) SOURCE.deref(), lineDeref(), columnDeref(),
+			                   v, init, meta, RT.count(form) == 3, isDynamic, isDeclared);
 		}
 	}
 }
@@ -2728,36 +2757,6 @@ public static class IfExpr implements Expr, MaybePrimitiveExpr{
 	}
 }
 
-static final public IPersistentMap CHAR_MAP =
-		PersistentHashMap.create('-', "_",
-//		                         '.', "_DOT_",
-':', "_COLON_",
-'+', "_PLUS_",
-'>', "_GT_",
-'<', "_LT_",
-'=', "_EQ_",
-'~', "_TILDE_",
-'!', "_BANG_",
-'@', "_CIRCA_",
-'#', "_SHARP_",
-'\'', "_SINGLEQUOTE_",
-'"', "_DOUBLEQUOTE_",
-'%', "_PERCENT_",
-'^', "_CARET_",
-'&', "_AMPERSAND_",
-'*', "_STAR_",
-'|', "_BAR_",
-'{', "_LBRACE_",
-'}', "_RBRACE_",
-'[', "_LBRACK_",
-']', "_RBRACK_",
-'/', "_SLASH_",
-'\\', "_BSLASH_",
-'?', "_QMARK_");
-
-static final public IPersistentMap DEMUNGE_MAP;
-static final public Pattern DEMUNGE_PATTERN;
-
 static {
 	// DEMUNGE_MAP maps strings to characters in the opposite
 	// direction that CHAR_MAP does, plus it maps "$" to '/'
@@ -4232,6 +4231,10 @@ static public class ObjExpr implements Expr{
       if (isDynamic) {
         clinitgen.invokeVirtual(VAR_TYPE, Method.getMethod("clojure.lang.Var setDynamic()"));
       }
+      if (var.isMacro()) {
+        clinitgen.dup();
+        clinitgen.invokeVirtual(VAR_TYPE, Method.getMethod("void setMacro()"));
+      }
       if (meta != null) {
         clinitgen.dup();
         meta.emit(C.EXPRESSION, this, clinitgen);
@@ -4814,14 +4817,6 @@ static public class ObjExpr implements Expr{
 				{
 				loader = (DynamicClassLoader) LOADER.deref();
 				compiledClass = loader.defineClass(name, bytecode, src);
-        // Force var init
-				try {
-            Field declaredField = compiledClass.getDeclaredField("VAR");
-            Var v = (Var) declaredField.get(null);
-          } catch (NoSuchFieldException e) {
-          } catch (Exception e) {
-            throw Util.sneakyThrow(e);
-          }
 				}
 		return compiledClass;
 	}

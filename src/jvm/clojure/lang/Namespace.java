@@ -21,6 +21,7 @@ public class Namespace extends AReference implements Serializable {
 final public Symbol name;
 transient final AtomicReference<IPersistentMap> mappings = new AtomicReference<IPersistentMap>();
 transient final AtomicReference<IPersistentMap> aliases = new AtomicReference<IPersistentMap>();
+transient final AtomicReference<IPersistentMap> refers = new AtomicReference<IPersistentMap>();
 
 final static ConcurrentHashMap<Symbol, Namespace> namespaces = new ConcurrentHashMap<Symbol, Namespace>();
 
@@ -33,6 +34,10 @@ Namespace(Symbol name){
 	this.name = name;
 	mappings.set(RT.DEFAULT_IMPORTS);
 	aliases.set(RT.map());
+	refers.set(RT.map());
+	if (!name.name.equals("clojure.core")) {
+	  referNs(RT.CLOJURE_NS, RT.map());
+	}
 }
 
 public static ISeq all(){
@@ -169,6 +174,46 @@ public Var refer(Symbol sym, Var var){
 
 }
 
+static Keyword only = Keyword.intern("only");
+static Keyword onlyAndRefer = Keyword.intern("onlyAndRefer");
+static Keyword refer = Keyword.intern("refer");
+static Keyword exclude = Keyword.intern("exclude");
+static Keyword all = Keyword.intern("all");
+static Keyword rename = Keyword.intern("rename");
+
+public Namespace referNs(Object ns, IPersistentMap filters) {
+  Object refer = filters.valAt(Namespace.refer);
+  Object exclude = filters.valAt(Namespace.exclude);
+  Object only = filters.valAt(Namespace.only);
+  only = only == null ? RT.set() : PersistentHashSet.create(RT.seq(only));
+  Object rename = filters.valAt(Namespace.rename);
+
+  IPersistentSet onlyAndRefer = (IPersistentSet) only;
+  if (refer != null && refer instanceof Sequential) {
+    for (ISeq e = RT.seq(refer); e != null; e = e.next()) {
+      onlyAndRefer = (IPersistentSet) onlyAndRefer.cons(e.first());
+    }
+  }
+
+  filters = filters
+      .assoc(Namespace.onlyAndRefer, onlyAndRefer)
+      .assoc(
+          Namespace.refer,
+          refer == null && refer instanceof Sequential ? PersistentHashSet
+              .create(RT.seq(refer)) : refer)
+      .assoc(
+          Namespace.exclude,
+          exclude == null ? RT.set() : PersistentHashSet.create(RT
+              .seq(exclude))).assoc(Namespace.only, only)
+      .assoc(Namespace.rename, rename == null ? RT.map() : rename);
+  boolean successful = false;
+  while (!successful) {
+    IPersistentMap expects = refers.get();
+    successful = refers.compareAndSet(expects, expects.assoc(ns, filters));
+  }
+  return this;
+ }
+
 public static Namespace findOrCreate(Symbol name){
 	Namespace ns = namespaces.get(name);
 	if(ns != null)
@@ -188,15 +233,58 @@ public static Namespace find(Symbol name){
 	return namespaces.get(name);
 }
 
-public Object getMapping(Symbol name){
-	return mappings.get().valAt(name);
+public Object getMapping(Symbol name) {
+  Object val = mappings.get().valAt(name);
+  if (val == null) {
+    val = Var.maybeLoadFromClass(this.name.toString(), name.toString());
+    if (val == null) {
+      val = searchMapping(name);
+      if (val != null && val instanceof Var) {
+        refer(name, (Var) val);
+      }
+    }
+    return val;
+  }
+  return val;
+}
+
+private Object searchMapping(Symbol name) {
+  IPersistentMap m = refers.get();
+  for (ISeq s = m.seq(); s != null; s = s.next()) {
+    Object o = null;
+    Object i = s.first();
+    Namespace ns = (Namespace) RT.first(i);
+    IPersistentMap filters = (IPersistentMap) RT.second(i);
+    Object refer = filters.valAt(Namespace.refer);
+    IPersistentSet exclude = (IPersistentSet) filters
+        .valAt(Namespace.exclude);
+    IPersistentMap rename = (IPersistentMap) filters.valAt(Namespace.rename);
+    if (exclude.contains(name)) {
+      continue;
+    } else if (rename.containsKey(name)) {
+      o = ns.getMapping((Symbol) rename.valAt(name));
+    } else if (Namespace.all.equals(refer)) {
+      o = ns.getMapping(name);
+    } else {
+      IPersistentSet onlyAndRefer = (IPersistentSet) filters
+          .valAt(Namespace.onlyAndRefer);
+      if (onlyAndRefer.count() > 0 && !onlyAndRefer.contains(name)) {
+        continue;
+      }
+      o = ns.getMapping(name);
+    }
+    if (o != null && o instanceof Var) {
+      return o;
+    }
+  }
+  return null;
 }
 
 public Var findInternedVar(Symbol symbol){
-	Object o = mappings.get().valAt(symbol);
+	Object o = getMapping(symbol);
 	if(o != null && o instanceof Var && ((Var) o).ns == this)
 		return (Var) o;
-	return null;
+	return Var.maybeLoadFromClass(name.toString(), symbol.toString());
 }
 
 

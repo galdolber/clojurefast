@@ -31,7 +31,7 @@
         psig (fn [[name [& args]]]
                (vector name (vec (map tag args)) (tag name) (map meta args)))
         cname (with-meta (symbol (str (namespace-munge *ns*) "." name)) (meta name))]
-    `(let [] 
+    `(do 
        (gen-interface :name ~cname :methods ~(vec (map psig sigs)))
        (import ~cname))))
 
@@ -358,7 +358,7 @@
         classname (symbol (str ns-part "." gname))
         hinted-fields fields
         fields (vec (map #(with-meta % nil) fields))]
-    `(let []
+    `(do
        (declare ~(symbol (str  '-> gname)))
        (declare ~(symbol (str 'map-> gname)))
        ~(emit-defrecord name gname (vec hinted-fields) (vec interfaces) methods)
@@ -458,7 +458,7 @@
         hinted-fields fields
         fields (vec (map #(with-meta % nil) fields))
         [field-args over] (split-at 20 fields)]
-    `(let []
+    `(do
        ~(emit-deftype* name gname (vec hinted-fields) (vec interfaces) methods)
        (import ~classname)
        ~(build-positional-factory gname classname fields)

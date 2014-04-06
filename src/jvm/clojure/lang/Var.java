@@ -77,6 +77,7 @@ static Keyword privateKey = Keyword.intern(null, "private");
 static IPersistentMap privateMeta = new PersistentArrayMap(new Object[]{privateKey, Boolean.TRUE});
 static Keyword macroKey = Keyword.intern(null, "macro");
 static Keyword nameKey = Keyword.intern(null, "name");
+static Keyword forceKey = Keyword.intern(null, "force");
 static Keyword nsKey = Keyword.intern(null, "ns");
 //static Keyword tagKey = Keyword.intern(null, "tag");
 
@@ -157,18 +158,24 @@ public static Var internPrivate(String nsName, String sym){
 public static Var intern(Namespace ns, Symbol sym){
   Var v = ns.intern(sym);
   if (!v.isBound()) {
-    maybeLoadFromClass(ns + "/" + sym);
+    maybeLoadFromClass(ns.toString(), sym.toString());
   }
 	return v;
 }
 
-public static void maybeLoadFromClass(String ns_sym){
+public static Var maybeLoadFromClass(String ns, String sym){
+  String ns_sym = clojure.lang.Compiler.munge(ns + "$" + sym.replace(".", "_DOT_"));
   try {
-    Class c = Class.forName(clojure.lang.Compiler.munge(ns_sym.replaceAll("/",
-        "\\$")));
-    c.getDeclaredField("VAR").get(null);      
-  } catch (Exception e) {
+    Class c = Class.forName(ns_sym);
+    Var v = (Var) c.getDeclaredField("VAR").get(null);
+    return v;
+  } catch (Throwable e) {
+    return null;
   }
+}
+
+public void maybeLoad() {
+  maybeLoadFromClass(ns.toString(), sym.toString());
 }
 
 public static Var create(){
